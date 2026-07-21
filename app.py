@@ -10,6 +10,7 @@ import traceback
 import vertexai
 from vertexai import agent_engines
 import sys
+import asyncio
 
 load_dotenv()
 
@@ -59,14 +60,21 @@ def get_preview(dataset_id, table_id):
         return jsonify({"error": str(e)}), 500
 
 
+def _fmt(args: dict) -> str:
+    return ", ".join(f"{k}={str(v)[:60]!r}" for k, v in args.items())
 
+def _preview(resp, limit: int = 200) -> str:
+    if isinstance(resp, dict):
+        resp = resp.get("result", resp)
+    text = str(resp).replace("\n", " ")
+    return text[:limit] + ("…" if len(text) > limit else "")
 
 AGENT_RESOURCE = "projects/512322842999/locations/us-central1/reasoningEngines/999058596194942976"
 
 @app.route("/api/submit", methods=["POST"])
 def submit():
     try:
-        data = request.get_json()
+        data        = request.get_json()
         dataset     = data.get("dataset")
         table       = data.get("table")
         action      = data.get("action")
@@ -78,31 +86,58 @@ def submit():
         spec = f"{action} dans la table {dataset}.{table} : {description}"
 
         vertexai.init(project=GCP_PROJECT, location="us-central1")
-        agent = agent_engines.get(AGENT_RESOURCE)
+        agent   = agent_engines.get(AGENT_RESOURCE)
         session = agent.create_session(user_id="front-user", state={"spec": spec})
-        print (spec)
+        print(f"Session: {session['id']}\nSpec: {spec}\n")
 
-        events = []
-        for event in agent.stream_query(
-            user_id="front-user",
-            session_id=session["id"],
-            message="Traite la spec",
-        ):
-            author = event.get("author", "?")
-            for part in (event.get("content") or {}).get("parts", []) or []:
-                if part.get("text"):
-                    events.append({"author": author, "text": part["text"]})
-                elif "function_call" in part:
-                    fc = part["function_call"]
-                    events.append({"author": author, "call": fc["name"]})
-                elif "function_response" in part:
-                    fr = part["function_response"]
-                    events.append({"author": author, "response": fr["name"]})
+        async def collect_events():
+            events = []
+            async for event in agent.async_stream_query(
+                user_id="front-user",
+                session_id=session["id"],
+                message="Traite la spec",
+            ):
+                author = event.get("author", "?")
+                for part in (event.get("content") or {}).get("parts", []) or []:
+                    if "function_call" in part:
+                        fc   = part["function_call"]
+                        args = fc.get("args") or {}
+                        events.append({
+                            "author": author,
+                            "type":   "call",
+                            "name":   fc["name"],
+                            "args":   _fmt(args)
+                        })
+                    elif "function_response" in part:
+                        fr   = part["function_response"]
+                        resp = fr.get("response")
+                        events.append({
+                            "author":   author,
+                            "type":     "response",
+                            "name":     fr["name"],
+                            "preview":  _preview(resp)
+                        })
+                    elif part.get("text"):
+                        events.append({
+                            "author": author,
+                            "type":   "text",
+                            "text":   part["text"]
+                        })
+                if event.get("error_code"):
+                    events.append({
+                        "author":  author,
+                        "type":    "error",
+                        "code":    event["error_code"],
+                        "message": event.get("error_message")
+                    })
+            return events
+
+        events = asyncio.run(collect_events())
 
         return jsonify({
-            "status": "success",
+            "status":  "success",
             "message": f"Workflow terminé — {action} sur {dataset}.{table}",
-            "events": events
+            "events":  events
         })
 
     except Exception as e:
