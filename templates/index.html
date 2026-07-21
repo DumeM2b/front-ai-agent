@@ -522,13 +522,14 @@
 
     // Validation légère
     if (!dataset || !table || !action || !description) {
-      showResult('error', 'Champs manquants', 'Veuillez remplir tous les champs avant de soumettre.');
+      showToast('error', 'Champs manquants', 'Veuillez remplir tous les champs avant de soumettre.');
       return;
     }
 
     btn.disabled = true;
-    document.getElementById('btn-label').textContent = 'Envoi…';
+    document.getElementById('btn-label').textContent = 'En cours…';
     document.getElementById('btn-spinner').style.display = 'inline-block';
+    startLog();
 
     try {
       const res = await fetch('/api/submit', {
@@ -536,15 +537,30 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dataset, table, action, description })
       });
-      const data = await res.json();
 
-      if (res.ok) {
-        showResult('success', 'Workflow déclenché', data.message, data.payload);
-      } else {
-        showResult('error', 'Erreur', data.error || 'Une erreur est survenue.');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast('error', 'Erreur', err.error || 'Une erreur est survenue.');
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buffer.indexOf('\n\n')) >= 0) {
+          const frame = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          const line = frame.replace(/^data: ?/, '').trim();
+          if (line) handleEvent(JSON.parse(line));
+        }
       }
     } catch (e) {
-      showResult('error', 'Erreur réseau', e.message);
+      showToast('error', 'Erreur réseau', e.message);
     } finally {
       btn.disabled = false;
       document.getElementById('btn-label').textContent = 'Lancer le workflow';
@@ -552,21 +568,76 @@
     }
   }
 
-  function showResult(type, title, message, payload) {
+  // ── Log d'événements en direct ──
+  function startLog() {
+    document.getElementById('result').innerHTML = `
+      <div class="toast" id="run-card" style="flex-direction:column;align-items:stretch;border-color:var(--border);background:var(--surface)">
+        <div class="toast-body" id="run-header" style="display:flex;align-items:center;gap:10px">
+          <div class="spinner" style="border-top-color:var(--accent)"></div>
+          <strong style="margin:0">Workflow en cours…</strong>
+        </div>
+        <div id="event-log" class="toast-payload" style="margin-top:12px;max-height:320px;overflow-y:auto;white-space:normal"></div>
+      </div>`;
+    document.getElementById('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function logLine(html) {
+    const log = document.getElementById('event-log');
+    if (!log) return;
+    const div = document.createElement('div');
+    div.style.padding = '2px 0';
+    div.innerHTML = html;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function handleEvent(evt) {
+    if (evt.status === 'started') {
+      logLine(`<span style="color:var(--muted)">▸ spec : ${escapeHtml(evt.spec)}</span>`);
+    } else if (evt.status === 'done') {
+      finishLog('success', 'Workflow terminé', evt.message);
+    } else if (evt.status === 'error' || evt.error) {
+      finishLog('error', 'Échec du workflow', evt.error || 'Erreur inconnue.');
+    } else if (evt.call) {
+      logLine(`<span style="color:var(--accent)">→ ${escapeHtml(evt.author)}</span> appelle <code>${escapeHtml(evt.call)}</code>`);
+    } else if (evt.response) {
+      logLine(`<span style="color:var(--success)">← ${escapeHtml(evt.author)}</span> réponse <code>${escapeHtml(evt.response)}</code>`);
+    } else if (evt.text) {
+      logLine(`<span style="color:var(--text)">${escapeHtml(evt.author)}</span> : ${escapeHtml(evt.text)}`);
+    }
+  }
+
+  function finishLog(type, title, message) {
+    const header = document.getElementById('run-header');
+    const card = document.getElementById('run-card');
     const icon = type === 'success' ? '✓' : '✕';
-    const payloadHtml = payload
-      ? `<div class="toast-payload">${JSON.stringify(payload, null, 2)}</div>`
-      : '';
+    const color = type === 'success' ? 'var(--success)' : 'var(--error)';
+    if (header) {
+      header.innerHTML = `
+        <span style="color:${color};font-size:16px">${icon}</span>
+        <strong style="margin:0">${escapeHtml(title)}</strong>
+        <span style="color:var(--muted);margin-left:6px">${escapeHtml(message || '')}</span>`;
+    }
+    if (card) card.style.borderColor = type === 'success' ? 'rgba(34,197,94,.35)' : 'rgba(239,68,68,.35)';
+  }
+
+  function showToast(type, title, message) {
+    const icon = type === 'success' ? '✓' : '✕';
     document.getElementById('result').innerHTML = `
       <div class="toast ${type}">
         <div class="toast-icon">${icon}</div>
         <div class="toast-body">
-          <strong>${title}</strong>
-          ${message}
-          ${payloadHtml}
+          <strong>${escapeHtml(title)}</strong>
+          ${escapeHtml(message || '')}
         </div>
       </div>`;
     document.getElementById('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
   }
 
   // Init
