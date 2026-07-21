@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data Workflow</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --border:    #2a2d3a;
+      --accent:    #4f7cff;
+      --accent-dim:#1e2f6b;
+      --text:      #e8eaf0;
+      --muted:     #6b7280;
+      --success:   #22c55e;
+      --error:     #ef4444;
+      --tag-add:   #166534;
+      --tag-del:   #7f1d1d;
+      --tag-mod:   #713f12;
+      --radius:    10px;
+      --mono:      'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px 80px;
+    }
+
+    /* ── Header ── */
+    header {
+      width: 100%;
+      max-width: 780px;
+      margin-bottom: 40px;
+    }
+    .header-eyebrow {
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    header h1 {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+    header p {
+      color: var(--muted);
+      margin-top: 6px;
+      font-size: 13px;
+    }
+
+    /* ── Card ── */
+    .card {
+      width: 100%;
+      max-width: 780px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    /* ── Section dans la card ── */
+    .section {
+      padding: 24px 28px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section:last-child { border-bottom: none; }
+
+    .section-label {
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 14px;
+    }
+
+    /* ── Selects en cascade ── */
+    .selects-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .select-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .select-wrap label {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 9px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    select:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* ── Preview table ── */
+    #preview-zone {
+      min-height: 0;
+      transition: min-height .2s;
+    }
+    #preview-zone:not(:empty) {
+      min-height: 40px;
+    }
+
+    .preview-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .preview-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .preview-badge {
+      font-size: 11px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-weight: 500;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      font-family: var(--mono);
+    }
+    thead th {
+      background: rgba(79,124,255,0.08);
+      color: var(--accent);
+      padding: 8px 14px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background .1s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
+    tbody td {
+      padding: 8px 14px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    /* ── Action pills ── */
+    .action-pills {
+      display: flex;
+      gap: 10px;
+    }
+    .pill-input { display: none; }
+    .pill-label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 16px;
+      border-radius: 99px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      transition: all .15s;
+      user-select: none;
+    }
+    .pill-label:hover { border-color: #444; color: var(--text); }
+
+    .pill-input[value="add"]:checked   + .pill-label { background: var(--tag-add);  border-color: #22c55e; color: #86efac; }
+    .pill-input[value="delete"]:checked + .pill-label { background: var(--tag-del); border-color: #ef4444; color: #fca5a5; }
+    .pill-input[value="modify"]:checked + .pill-label { background: var(--tag-mod); border-color: #f59e0b; color: #fcd34d; }
+
+    .pill-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* ── Textarea ── */
+    textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 13px;
+      font-family: inherit;
+      line-height: 1.6;
+      resize: vertical;
+      min-height: 100px;
+      transition: border-color .15s;
+    }
+    textarea::placeholder { color: var(--muted); }
+    textarea:focus { outline: none; border-color: var(--accent); }
+
+    /* ── Submit ── */
+    .submit-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .submit-hint {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    button[type="submit"] {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 24px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: opacity .15s, transform .1s;
+      white-space: nowrap;
+    }
+    button[type="submit"]:hover { opacity: .88; }
+    button[type="submit"]:active { transform: scale(.98); }
+    button[type="submit"]:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ── Toast / résultat ── */
+    #result {
+      width: 100%;
+      max-width: 780px;
+      margin-top: 16px;
+    }
+    .toast {
+      padding: 14px 18px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      border: 1px solid;
+    }
+    .toast.success {
+      background: rgba(34,197,94,.08);
+      border-color: rgba(34,197,94,.25);
+      color: #86efac;
+    }
+    .toast.error {
+      background: rgba(239,68,68,.08);
+      border-color: rgba(239,68,68,.25);
+      color: #fca5a5;
+    }
+    .toast-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+    .toast-body strong { display: block; margin-bottom: 3px; }
+    .toast-payload {
+      margin-top: 10px;
+      font-family: var(--mono);
+      font-size: 11px;
+      background: rgba(0,0,0,.3);
+      border-radius: 6px;
+      padding: 10px 12px;
+      color: var(--muted);
+      white-space: pre;
+    }
+
+    /* ── Spinner ── */
+    .htmx-indicator {
+      opacity: 0;
+      transition: opacity .2s;
+    }
+    .htmx-request .htmx-indicator,
+    .htmx-request.htmx-indicator { opacity: 1; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: inline-block;
+    }
+
+    /* ── Loader ligne ── */
+    .loading-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 10px 0;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-eyebrow">GCP · Data Workflow</div>
+  <h1>Nouvelle demande</h1>
+  <p>Sélectionnez une table, choisissez une action et décrivez votre besoin.</p>
+</header>
+
+<div class="card">
+
+  <!-- Sélection dataset / table -->
+  <div class="section">
+    <div class="section-label">Source</div>
+    <div class="selects-row">
+
+      <div class="select-wrap">
+        <label for="dataset-select">Dataset</label>
+        <select id="dataset-select" name="dataset" onchange="onDatasetChange(this)">
+          <option value="">Choisir un dataset…</option>
+        </select>
+      </div>
+
+      <div class="select-wrap">
+        <label for="table-select">Table</label>
+        <select id="table-select" name="table" disabled onchange="onTableChange(this)">
+          <option value="">Choisir une table…</option>
+        </select>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Aperçu table -->
+  <div class="section" id="preview-section" style="display:none">
+    <div id="preview-zone"></div>
+  </div>
+
+  <!-- Action -->
+  <div class="section">
+    <div class="section-label">Action</div>
+    <div class="action-pills">
+      <input class="pill-input" type="radio" name="action" id="act-add"    value="add">
+      <label class="pill-label" for="act-add">
+        <span class="pill-dot"></span> Ajouter
+      </label>
+
+      <input class="pill-input" type="radio" name="action" id="act-delete" value="delete">
+      <label class="pill-label" for="act-delete">
+        <span class="pill-dot"></span> Supprimer
+      </label>
+
+      <input class="pill-input" type="radio" name="action" id="act-modify" value="modify">
+      <label class="pill-label" for="act-modify">
+        <span class="pill-dot"></span> Modifier
+      </label>
+    </div>
+  </div>
+
+  <!-- Description -->
+  <div class="section">
+    <div class="section-label">Description de la demande</div>
+    <textarea id="description" placeholder="Décrivez précisément ce que vous souhaitez faire sur cette table…" rows="4"></textarea>
+  </div>
+
+  <!-- Submit -->
+  <div class="section">
+    <div class="submit-row">
+      <span class="submit-hint">Le workflow sera déclenché immédiatement après validation.</span>
+      <button type="submit" id="submit-btn" onclick="submitForm(this)">
+        <span id="btn-label">Lancer le workflow</span>
+        <span class="spinner htmx-indicator" id="btn-spinner" style="display:none"></span>
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<div id="result"></div>
+
+<script>
+  // ── Chargement initial des datasets ──
+  async function loadDatasets() {
+    const res = await fetch('/api/datasets');
+    const datasets = await res.json();
+    const sel = document.getElementById('dataset-select');
+    datasets.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = `${d.id}`;
+      sel.appendChild(opt);
+    });
+  }
+
+  // ── Changement dataset ──
+  async function onDatasetChange(sel) {
+    const dataset = sel.value;
+    const tableSel = document.getElementById('table-select');
+    tableSel.innerHTML = '<option value="">Choisir une table…</option>';
+    tableSel.disabled = true;
+    hidePreview();
+
+    if (!dataset) return;
+
+    tableSel.innerHTML = '<option value="">Chargement…</option>';
+    const res = await fetch(`/api/tables/${dataset}`);
+    const tables = await res.json();
+
+    tableSel.innerHTML = '<option value="">Choisir une table…</option>';
+    tables.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t;
+      tableSel.appendChild(opt);
+    });
+    tableSel.disabled = false;
+  }
+
+  // ── Changement table ──
+  async function onTableChange(sel) {
+    const table = sel.value;
+    const dataset = document.getElementById('dataset-select').value;
+    if (!table) { hidePreview(); return; }
+
+    showPreviewLoading(table);
+
+    const res = await fetch(`/api/preview/${dataset}/${table}`);
+    const data = await res.json();
+    renderPreview(table, data);
+  }
+
+  function hidePreview() {
+    document.getElementById('preview-section').style.display = 'none';
+    document.getElementById('preview-zone').innerHTML = '';
+  }
+
+  function showPreviewLoading(table) {
+    document.getElementById('preview-section').style.display = 'block';
+    document.getElementById('preview-zone').innerHTML = `
+      <div class="loading-row">
+        <div class="spinner" style="border-top-color:var(--accent)"></div>
+        Chargement de l'aperçu de <strong style="color:var(--text)">${table}</strong>…
+      </div>`;
+  }
+
+  function renderPreview(table, data) {
+    const cols = data.schema;
+    const rows = data.rows;
+
+    const ths = cols.map(c => `<th>${c}</th>`).join('');
+    const trs = rows.map(r =>
+      `<tr>${r.map(cell => `<td>${cell}</td>`).join('')}</tr>`
+    ).join('');
+
+    document.getElementById('preview-zone').innerHTML = `
+      <div class="preview-header">
+        <span class="preview-title">Aperçu</span>
+        <span class="preview-badge">${rows.length} lignes · ${cols.length} colonnes</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>${ths}</tr></thead>
+          <tbody>${trs}</tbody>
+        </table>
+      </div>`;
+  }
+
+  // ── Submit ──
+  async function submitForm(btn) {
+    const dataset     = document.getElementById('dataset-select').value;
+    const table       = document.getElementById('table-select').value;
+    const action      = document.querySelector('input[name="action"]:checked')?.value;
+    const description = document.getElementById('description').value.trim();
+
+    // Validation légère
+    if (!dataset || !table || !action || !description) {
+      showResult('error', 'Champs manquants', 'Veuillez remplir tous les champs avant de soumettre.');
+      return;
+    }
+
+    btn.disabled = true;
+    document.getElementById('btn-label').textContent = 'Envoi…';
+    document.getElementById('btn-spinner').style.display = 'inline-block';
+
+    try {
+      const res = await fetch('/api/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataset, table, action, description })
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        showResult('success', 'Workflow déclenché', data.message, data.payload);
+      } else {
+        showResult('error', 'Erreur', data.error || 'Une erreur est survenue.');
+      }
+    } catch (e) {
+      showResult('error', 'Erreur réseau', e.message);
+    } finally {
+      btn.disabled = false;
+      document.getElementById('btn-label').textContent = 'Lancer le workflow';
+      document.getElementById('btn-spinner').style.display = 'none';
+    }
+  }
+
+  function showResult(type, title, message, payload) {
+    const icon = type === 'success' ? '✓' : '✕';
+    const payloadHtml = payload
+      ? `<div class="toast-payload">${JSON.stringify(payload, null, 2)}</div>`
+      : '';
+    document.getElementById('result').innerHTML = `
+      <div class="toast ${type}">
+        <div class="toast-icon">${icon}</div>
+        <div class="toast-body">
+          <strong>${title}</strong>
+          ${message}
+          ${payloadHtml}
+        </div>
+      </div>`;
+    document.getElementById('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // Init
+  loadDatasets();
+</script>
+
+</body>
+</html>

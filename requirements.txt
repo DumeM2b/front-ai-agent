@@ -1,0 +1,5 @@
+flask
+google-cloud-bigquery
+google-cloud-aiplatform[agent_engines]
+gunicorn
+python-dotenv
