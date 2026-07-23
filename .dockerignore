@@ -16,13 +16,6 @@ ENV/
 # Caches Python & outils
 __pycache__/
 *.py[cod]
-*$py.class
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
-
-# Divers
-.dockerignore
-Dockerfile
-README.md
-*.md
