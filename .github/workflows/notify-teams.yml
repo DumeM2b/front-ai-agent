@@ -1,0 +1,69 @@
+name: Notify Teams on PR
+
+on:
+  pull_request:
+    types: [opened, reopened, closed, ready_for_review]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Teams notification
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          PR_URL="${{ github.event.pull_request.html_url }}"
+          PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          REPO="${{ github.repository }}"
+          ACTION="${{ github.event.action }}"
+
+          # Définir la couleur et le statut selon l'action
+          if [ "$ACTION" = "opened" ] || [ "$ACTION" = "reopened" ]; then
+            STATUS="🟢 Ouverte"
+            COLOR="Good"
+          elif [ "$ACTION" = "closed" ] && [ "${{ github.event.pull_request.merged }}" = "true" ]; then
+            STATUS="🟣 Mergée"
+            COLOR="Accent"
+          elif [ "$ACTION" = "closed" ]; then
+            STATUS="🔴 Fermée"
+            COLOR="Attention"
+          else
+            STATUS="🔵 Prête pour review"
+            COLOR="Accent"
+          fi
+
+          curl -H "Content-Type: application/json" \
+               -d "{
+                 \"type\": \"message\",
+                 \"attachments\": [{
+                   \"contentType\": \"application/vnd.microsoft.card.adaptive\",
+                   \"content\": {
+                     \"\$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\",
+                     \"type\": \"AdaptiveCard\",
+                     \"version\": \"1.4\",
+                     \"body\": [
+                       {
+                         \"type\": \"TextBlock\",
+                         \"text\": \"Pull Request $STATUS\",
+                         \"weight\": \"Bolder\",
+                         \"size\": \"Medium\",
+                         \"color\": \"$COLOR\"
+                       },
+                       {
+                         \"type\": \"FactSet\",
+                         \"facts\": [
+                           { \"title\": \"Repo\", \"value\": \"$REPO\" },
+                           { \"title\": \"PR\", \"value\": \"#$PR_NUMBER — $PR_TITLE\" },
+                           { \"title\": \"Auteur\", \"value\": \"$PR_AUTHOR\" }
+                         ]
+                       }
+                     ],
+                     \"actions\": [{
+                       \"type\": \"Action.OpenUrl\",
+                       \"title\": \"Voir la PR\",
+                       \"url\": \"$PR_URL\"
+                     }]
+                   }
+                 }]
+               }" \
+               "${{ secrets.TEAMS_WEBHOOK_URL }}"
