@@ -1,0 +1,28 @@
+# Environnements virtuels (réinstallés depuis requirements.txt dans l'image)
+.venv/
+venv/
+env/
+ENV/
+
+# Secrets & config locale (les vars viennent de la config Cloud Run, pas de l'image)
+.env
+.env.example
+
+# Git / CI
+.git/
+.github/
+.gitignore
+
+# Caches Python & outils
+__pycache__/
+*.py[cod]
+*$py.class
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Divers
+.dockerignore
+Dockerfile
+README.md
+*.md
