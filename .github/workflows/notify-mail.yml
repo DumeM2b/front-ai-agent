@@ -11,15 +11,14 @@ jobs:
       - name: Send email notification
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: smtp.office365.com
+          server_address: smtp.sendgrid.net
           server_port: 587
           secure: false
-          username: ${{ secrets.MAIL_USERNAME }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: |
-            [GitHub] PR #${{ github.event.pull_request.number }} — ${{ github.event.pull_request.title }}
+          username: apikey
+          password: ${{ secrets.SENDGRID_API_KEY }}
+          subject: "[GitHub] PR #${{ github.event.pull_request.number }} — ${{ github.event.pull_request.title }}"
           to: ${{ secrets.MAIL_TO }}
-          from: GitHub Actions <${{ secrets.MAIL_USERNAME }}>
+          from: GitHub Actions <${{ secrets.MAIL_FROM }}>
           html_body: |
             <h2>🔔 Pull Request — ${{ github.event.action }}</h2>
             <table>
